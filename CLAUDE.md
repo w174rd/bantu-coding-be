@@ -115,17 +115,33 @@ the filename kept for display only. Their content is untrusted input under secti
 
 Default model: `claude-opus-5`, unless the user asks for another.
 
-### Current status: THE REPO IS EMPTY
+### Current status: TICKETS AND THE DISCUSSION ROOM ARE BUILT, THE DATABASE IS NOT MIGRATED
 
-This repo has **no commits at all** (`git log` empty, `git remote -v` empty). All that exists is this `CLAUDE.md`, `.claude/`, and `.gitignore`.
+Four specs are executed (see `.claude/specs/INDEX.md`). `git remote -v` is still empty.
 
-**Does not exist yet:** `app/`, `tests/`, `requirements.txt`, `.venv/`, `alembic/`, any database, endpoint, model, schema, or code of any kind.
+**Exists:** `app/` (`api/`, `core/`, `db/`, `models/`, `schemas/`, `services/`), `tests/`, `alembic/` with three
+migrations, `requirements.txt`, `.venv/`. Eighteen endpoints: tickets CRUD, `/api/v1/personas`,
+`/api/v1/conversations` with messages, document upload, verdicts and the SSE round stream, and
+`/api/v1/ai-provider-configs`.
 
-Do not assume anything beyond that. Check first (`ls`, Grep) before editing or referencing a file.
+**Does not exist yet:** agent runs — nothing that executes a ticket, clones a target repo, or pushes. No auth.
+No FE chat UI (that repo's `routes/Chat.tsx` is still a placeholder).
 
-### First milestone
+**The database is the thing to check first.** `f52211af4ab5` and `b7c4e0d51a93` are hand-written and have
+**never been applied**, because `DB_USER`, `DB_PASSWORD` and `DB_NAME` are blank in the local `.env`. Until
+they are filled and `alembic upgrade head` succeeds, every endpoint except the tickets ones returns a `500`,
+and the persona/conversation/verdict schema is unproven. Run `alembic current` before believing anything here.
 
-FastAPI app + a `/health` endpoint + a working PostgreSQL connection. Persona chat, tickets, the board, and agent execution come **after** that foundation stands. Do not build modules for features that are not yet a real requirement.
+Do not assume beyond this. Check first (`ls`, Grep) before editing or referencing a file — this block goes
+stale faster than anything else in this document.
+
+### Next milestone
+
+Restore the `DB_*` credentials, apply both migrations, and verify a real discussion round end to end. The FE
+chat UI follows. Agent execution comes after that, and needs its isolation decision settled first (section 6.3).
+
+There is **no `/health` endpoint** and none is wanted — it was proposed in the scaffolding spec and rejected as
+ceremony. Do not add one back.
 
 Local dev: Windows PC. Production: not decided yet.
 
