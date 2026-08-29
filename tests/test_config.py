@@ -11,6 +11,7 @@ def _settings(**overrides: object) -> Settings:
         "db_user": "testuser",
         "db_password": "testpass",
         "db_name": "testdb",
+        "ai_config_encryption_key": "dGVzdC1rZXktbm90LWEtcmVhbC1mZXJuZXQta2V5EQ=",
     }
     values.update(overrides)
     return Settings(**values)  # type: ignore[arg-type]

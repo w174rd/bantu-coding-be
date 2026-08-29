@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     db_password: str
     db_name: str
 
+    # No default, for the same reason the DB_* fields have none: a missing key must
+    # fail at startup rather than let the app run until the first provider call.
+    ai_config_encryption_key: str
+
+    document_max_bytes: int = 262_144
+
     cors_origins: str = "http://localhost:5173"
 
     @property

@@ -43,6 +43,42 @@ The database column is a **native Postgres enum**, so adding a status is a migra
 
 **A successful run auto-advances the ticket** from In Progress to In Review. This does not violate the gate in point 3 — that gate guards *entry* into In Progress, not every transition (section 6.2).
 
+### The discussion room (settled)
+
+Stage 1 of the product flow is **one shared Slack-style channel** — not a thread per persona. Four fixed AI
+characters and the human all speak in the same room. The cast is not user-configurable, and adding a fifth is a
+migration (`PersonaRole` is a native Postgres enum), not a config change.
+
+| Role (`PersonaRole`) | Name | Avatar | Accent | What they do |
+|---|---|---|---|---|
+| `ARCHITECT` | Architect | 🏗️ | `#6366f1` | Proposes the solution |
+| `RESEARCHER` | Researcher | 📚 | `#14b8a6` | Supplies facts, constraints, prior art |
+| `CHALLENGER` | Challenger | 🧨 | `#f43f5e` | Antithesis — attacks the proposal |
+| `ARBITER` | Arbiter | ⚖️ | `#f59e0b` | Scores the options and writes the ticket |
+
+The personas are named for their function, not given personal names. `name` therefore mirrors `role` — it is
+still a separate column because it is display text the FE renders, while `role` is the enum that code branches on.
+
+Identity and display data live in the `personas` table, seeded by migration. **System prompts live in
+`app/core/personas.py`, keyed by role, and are never returned by any endpoint.** Personas reply in whatever
+language the user writes in.
+
+**Flow:** a round runs `Architect → Researcher → Challenger` automatically; **the Arbiter steps in on its own
+after N rounds**, scores the options as percentages, and creates the winning ticket. That ticket lands in
+**Backlog** — which is why it does not violate the drag gate in point 3. Only the user moves anything into
+In Progress.
+
+**The AI layer is provider-agnostic**, modelled on the sibling project `../nara-persona-api`: an `AIProvider`
+ABC with one `chat()` method, one adapter per vendor, and an `ai_provider_configs` row (provider, model,
+Fernet-encrypted key, `is_active`) that is CRUD'd over the API. Provider and model are switched at runtime, not
+through `.env`. Exactly one config may be active. **The Claude Agent SDK is not used for chat** — it stays
+reserved for ticket execution.
+
+**Progress reaches the FE over SSE.** The user's own messages go up as an ordinary POST.
+
+Uploaded `.txt`/`.md` documents are ingested as `document` messages: decoded in memory, never written to disk,
+the filename kept for display only. Their content is untrusted input under section 6.1.
+
 ### Stack
 
 | Component | Choice |
@@ -76,10 +112,7 @@ Local dev: Windows PC. Production: not decided yet.
 
 Do not invent answers for any of the following — if a task touches one, **ask the user first**:
 
-- **The persona model** — how many personas, whether the user configures them, and whether they all share one Slack-style channel or each gets its own thread. This shapes the conversation/message schema; settle it before designing those tables.
-- Does persona chat also use the Claude Agent SDK, or just the plain Messages API (`anthropic`)? What *is* decided: the Agent SDK for **ticket execution**.
-- How do long-running jobs run — FastAPI `BackgroundTasks`, a separate worker, or a queue?
-- How does agent progress stream to the FE — SSE, WebSocket, or polling?
+- How do long-running jobs run — FastAPI `BackgroundTasks`, a separate worker, or a queue? A discussion round is three-to-four provider calls deep, so this is now a live question, not a distant one.
 - Execution isolation — **that** runs are isolated is settled and required (section 6.3). **How** is open: Docker, a VM, or a dedicated unprivileged user. Pick the mechanism, not whether.
 - Auth — none yet. Single-user is the current assumption, and the app stays bound to localhost until that changes (section 6.3, item 6).
 - How target repos get registered and cloned. The credential *shape* is settled (per-repo scoped, separate from the app's — section 6.3, item 2); where the record lives is not.
@@ -158,7 +191,7 @@ Once this gate passes (or the task really is trivial), the rules below apply:
 
 ## 5. Project Patterns (Quick Reference)
 
-These folders exist. `app/api/`, `app/core/`, `app/db/`, `app/models/`, and `app/schemas/` hold code; `app/services/` is still empty.
+These folders all hold code: `app/api/`, `app/core/`, `app/db/`, `app/models/`, `app/schemas/`, and `app/services/` (`documents.py` so far).
 
 | Need | Location |
 |---|---|
