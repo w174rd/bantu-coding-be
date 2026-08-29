@@ -8,6 +8,10 @@ from alembic import context
 from app.core.config import get_settings
 from app.db.base import Base
 
+# Importing the package registers every model on Base.metadata. Without this the
+# metadata is empty, autogenerate detects no changes, and emits an empty migration.
+import app.models  # noqa: F401
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config

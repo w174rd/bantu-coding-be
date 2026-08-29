@@ -33,6 +33,16 @@ These names are shared with `bantu-coding-fe`. Use them in models, schemas, rout
 
 Where one of these is not yet modeled, that is a gap to fill — not a licence to invent a different name for it.
 
+### The board's columns (settled)
+
+`Backlog → In Progress → In Review → Done`, defined once as `TicketStatus` in `app/core/enums.py` and shared by the model and the schemas.
+
+**In Review** is where a ticket waits while the agent's pull request is open. That state exists because section 6.3 requires a run to open a PR rather than push to a default branch — without the column there is nowhere for "the agent finished but you have not accepted it" to live.
+
+The database column is a **native Postgres enum**, so adding a status is a migration and a product decision, never a config tweak.
+
+**A successful run auto-advances the ticket** from In Progress to In Review. This does not violate the gate in point 3 — that gate guards *entry* into In Progress, not every transition (section 6.2).
+
 ### Stack
 
 | Component | Choice |
@@ -66,8 +76,6 @@ Local dev: Windows PC. Production: not decided yet.
 
 Do not invent answers for any of the following — if a task touches one, **ask the user first**:
 
-- **The board's columns.** Only "In Progress" is named so far. Whether the rest is Backlog → In Progress → Done, or something wider, is undecided.
-- **What happens to a ticket when its agent run finishes** — does it move to a Done column on its own, or wait for the user? Automatic movement here would *not* violate the gate in point 3, which guards only entry into In Progress. Still undecided.
 - **The persona model** — how many personas, whether the user configures them, and whether they all share one Slack-style channel or each gets its own thread. This shapes the conversation/message schema; settle it before designing those tables.
 - Does persona chat also use the Claude Agent SDK, or just the plain Messages API (`anthropic`)? What *is* decided: the Agent SDK for **ticket execution**.
 - How do long-running jobs run — FastAPI `BackgroundTasks`, a separate worker, or a queue?
@@ -150,7 +158,7 @@ Once this gate passes (or the task really is trivial), the rules below apply:
 
 ## 5. Project Patterns (Quick Reference)
 
-**None of the folders below exist yet.** This table is the placement plan, to be used when scaffolding is built.
+These folders exist. `app/api/`, `app/core/`, `app/db/`, `app/models/`, and `app/schemas/` hold code; `app/services/` is still empty.
 
 | Need | Location |
 |---|---|
@@ -162,6 +170,13 @@ Once this gate passes (or the task really is trivial), the rules below apply:
 | Env config, security, logging, shared constants | `app/core/` |
 | Schema migrations | `alembic/` |
 | Tests | `tests/`, mirroring the `app/` structure |
+
+**API conventions**, settled by the first endpoints in `app/api/tickets.py`:
+
+- **URL shape:** `/api/v1/<resource>`, plural.
+- **No response envelope.** Endpoints return the resource itself and use HTTP status codes for outcome — `201` create, `204` delete, `404` missing, `422` validation. Do not introduce a `{status, message, code, content}` wrapper: every call site would then unwrap before it could use anything, duplicating what status codes already express.
+- **`PATCH` uses `exclude_unset`.** An omitted field is left alone; an explicit `null` clears it. Those are different, and schemas must preserve the difference.
+- **Enums shared between a model and its schemas live in `app/core/enums.py`**, so neither imports the other.
 
 **Dependency direction:** `API` → `Services` → (`DB`, Claude Agent SDK, Git/GitHub).
 
@@ -239,23 +254,39 @@ How runs are isolated, credentialed, or pushed is an architectural decision. Any
 
 ## 8. Build & Run
 
-Applies **after** the `app/` scaffolding exists (see section 0 — it does not yet):
+### First-time setup
 
 ```powershell
-# Activate the virtual environment
-.\.venv\Scripts\Activate.ps1
+# Bare `python` on this machine is a 32-bit Python 3.10 — below the 3.12+ this
+# project requires. Always name the interpreter explicitly.
+py -3.12 -m venv .venv
 
-# Install dependencies
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 
-# Run the dev server (auto-reload)
-uvicorn app.main:app --reload
+copy .env.example .env
+```
 
-# Run tests
+Then fill `DB_USER`, `DB_PASSWORD`, and `DB_NAME` in `.env`. They are blank in the example on purpose (section 7), so choose your own.
+
+The role and database must already exist on **PostgreSQL 18, which listens on port 5433**. Port 5432 belongs to PostgreSQL 17 on this machine, and 5434 to PostgreSQL 14 — pointing at 5432 silently connects to the wrong server. `psql` on PATH is 17.2, so use `psql -p 5433` to reach 18.
+
+```powershell
+alembic upgrade head
+```
+
+### Day to day
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+
+uvicorn app.main:app --reload    # http://127.0.0.1:8000, docs at /docs
 pytest
 ```
 
-Python 3.12+, PostgreSQL 18. Add a dependency to `requirements.txt` only when a concrete feature needs it — avoid dependencies that are not needed yet.
+**The app will not start without a `.env`.** `Settings` gives the `DB_*` fields no defaults, deliberately: missing configuration fails loudly instead of quietly connecting somewhere unintended.
+
+Add a dependency to `requirements.txt` only when a concrete feature needs it — avoid dependencies that are not needed yet.
 
 ---
 
