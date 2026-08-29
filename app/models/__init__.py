@@ -6,5 +6,14 @@ from app.models.conversation import Conversation
 from app.models.message import Message
 from app.models.persona import Persona
 from app.models.ticket import Ticket
+from app.models.verdict import Verdict, VerdictOption
 
-__all__ = ["AiProviderConfig", "Conversation", "Message", "Persona", "Ticket"]
+__all__ = [
+    "AiProviderConfig",
+    "Conversation",
+    "Message",
+    "Persona",
+    "Ticket",
+    "Verdict",
+    "VerdictOption",
+]

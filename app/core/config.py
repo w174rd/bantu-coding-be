@@ -27,6 +27,12 @@ class Settings(BaseSettings):
 
     document_max_bytes: int = 262_144
 
+    # Characters, not tokens, so no per-vendor tokenizer is needed. Oldest messages
+    # are dropped first when the room outgrows it.
+    chat_history_char_budget: int = 10_000
+    persona_max_tokens: int = 4_096
+    arbiter_every_n_rounds: int = 2
+
     cors_origins: str = "http://localhost:5173"
 
     @property

@@ -76,6 +76,27 @@ reserved for ticket execution.
 
 **Progress reaches the FE over SSE.** The user's own messages go up as an ordinary POST.
 
+**How a round runs (settled).** `GET /api/v1/conversations/{id}/stream` runs the round **inline and streams it**
+— opening that stream is what makes the personas speak, so it is deliberately non-idempotent. No worker, no
+queue, no background-task state. An `asyncio.Lock` per conversation makes a second concurrent stream `409`
+rather than a duplicate round. Two consequences to keep in mind before building on it: a closed tab abandons the
+round (committed messages survive, the rest never happen), and the lock is per **process**, so this stops being
+correct the moment the app is not single-user on localhost.
+
+Streaming is **message-level**: a persona appears when it finishes. This is what keeps `AIProvider` down to one
+`chat()` returning `str` across all four vendors. Token-level streaming would need a second, vendor-specific
+code path in every adapter.
+
+**The Arbiter's output is the sharpest boundary in the chat half of this codebase.** It emits JSON that becomes
+a ticket, so §6.4 applies in full: it is parsed, validated through `ArbiterVerdict`, and only then written.
+`ArbiterTicket` has **no status field** — the ticket status is hardcoded to `BACKLOG` in `app/services/arbiter.py`.
+That is the drag gate expressed in code, and `tests/test_arbiter_verdict.py` asserts it. Do not add a status
+field to that schema.
+
+Vendor exception text is **never** forwarded to a client — it can echo the request it came from, and the API key
+travels in that request. `AIProviderError.safe_to_display` marks the messages this codebase wrote itself; only
+those reach the browser.
+
 Uploaded `.txt`/`.md` documents are ingested as `document` messages: decoded in memory, never written to disk,
 the filename kept for display only. Their content is untrusted input under section 6.1.
 
@@ -112,7 +133,6 @@ Local dev: Windows PC. Production: not decided yet.
 
 Do not invent answers for any of the following — if a task touches one, **ask the user first**:
 
-- How do long-running jobs run — FastAPI `BackgroundTasks`, a separate worker, or a queue? A discussion round is three-to-four provider calls deep, so this is now a live question, not a distant one.
 - Execution isolation — **that** runs are isolated is settled and required (section 6.3). **How** is open: Docker, a VM, or a dedicated unprivileged user. Pick the mechanism, not whether.
 - Auth — none yet. Single-user is the current assumption, and the app stays bound to localhost until that changes (section 6.3, item 6).
 - How target repos get registered and cloned. The credential *shape* is settled (per-repo scoped, separate from the app's — section 6.3, item 2); where the record lives is not.
@@ -191,7 +211,8 @@ Once this gate passes (or the task really is trivial), the rules below apply:
 
 ## 5. Project Patterns (Quick Reference)
 
-These folders all hold code: `app/api/`, `app/core/`, `app/db/`, `app/models/`, `app/schemas/`, and `app/services/` (`documents.py` so far).
+These folders all hold code: `app/api/`, `app/core/`, `app/db/`, `app/models/`, `app/schemas/`, and
+`app/services/` (`documents.py`, `discussion.py`, `arbiter.py`, and `ai/` — the provider adapters).
 
 | Need | Location |
 |---|---|
