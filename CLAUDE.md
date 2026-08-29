@@ -14,9 +14,24 @@ No architecture spec exists yet — the first one gets written when the `app/` s
 
 1. **Multi-persona chat** — the user talks with several AI personas that have distinct personalities. Slack-style UI/UX, built in the separate `bantu-coding-fe` repo.
 2. **Backlog tickets** — out of those discussions, the AI can create backlog tickets.
-3. **Drag to In Progress** — the user drags a ticket into the "In Progress" column. **Only the user may drag**, never the AI. This is the product's primary control gate — treat it as an invariant and never build a path that lets the AI move a ticket itself.
+3. **Drag to In Progress** — the user drags a ticket into the "In Progress" column. **Only the user may move a ticket *into* In Progress** — never the AI, never an automatic rule. This is the product's primary control gate: it is the only thing standing between an AI-written ticket and an AI-executed code change on a real repo. Treat it as an invariant.
+   *(Moving a ticket **out** of In Progress once a run finishes is a separate question — see "Decisions NOT yet made". The gate guards entry, not every transition.)*
 4. **Automatic execution** — that move triggers Claude Code (via the **Claude Agent SDK**) to implement the task in the target repo.
 5. **Auto commit & push** — the agent's work is committed and pushed automatically to the target GitHub repo.
+
+### Core concepts (shared vocabulary)
+
+These names are shared with `bantu-coding-fe`. Use them in models, schemas, routes, and types so the two repos do not drift apart:
+
+| Term | Meaning |
+|---|---|
+| **Persona** | One AI personality the user can talk to. |
+| **Conversation** / **Message** | A chat thread and its entries. |
+| **Ticket** | A backlog item created out of a conversation. The unit of work. |
+| **Agent run** | One Claude Agent SDK execution against a ticket, carrying status and progress. |
+| **Target repo** | The external GitHub repo an agent run reads and pushes to — never this repo. |
+
+Where one of these is not yet modeled, that is a gap to fill — not a licence to invent a different name for it.
 
 ### Stack
 
@@ -51,12 +66,15 @@ Local dev: Windows PC. Production: not decided yet.
 
 Do not invent answers for any of the following — if a task touches one, **ask the user first**:
 
+- **The board's columns.** Only "In Progress" is named so far. Whether the rest is Backlog → In Progress → Done, or something wider, is undecided.
+- **What happens to a ticket when its agent run finishes** — does it move to a Done column on its own, or wait for the user? Automatic movement here would *not* violate the gate in point 3, which guards only entry into In Progress. Still undecided.
+- **The persona model** — how many personas, whether the user configures them, and whether they all share one Slack-style channel or each gets its own thread. This shapes the conversation/message schema; settle it before designing those tables.
 - Does persona chat also use the Claude Agent SDK, or just the plain Messages API (`anthropic`)? What *is* decided: the Agent SDK for **ticket execution**.
 - How do long-running jobs run — FastAPI `BackgroundTasks`, a separate worker, or a queue?
 - How does agent progress stream to the FE — SSE, WebSocket, or polling?
-- Execution isolation for the agent (container/sandbox/VM) — not decided at all.
-- Auth and multi-user — none yet. The current assumption is single-user (the user themselves).
-- How target repos get registered, cloned, and where their credentials live.
+- Execution isolation — **that** runs are isolated is settled and required (section 6.3). **How** is open: Docker, a VM, or a dedicated unprivileged user. Pick the mechanism, not whether.
+- Auth — none yet. Single-user is the current assumption, and the app stays bound to localhost until that changes (section 6.3, item 6).
+- How target repos get registered and cloned. The credential *shape* is settled (per-repo scoped, separate from the app's — section 6.3, item 2); where the record lives is not.
 
 ---
 
@@ -156,19 +174,62 @@ Once this gate passes (or the task really is trivial), the rules below apply:
 
 ## 6. Agent Execution Security
 
-This backend runs Claude Code with Bash/Write/Edit tools on a real machine, then pushes to GitHub. It is the most sensitive surface in the project — treat it seriously:
+The sharpest surface in this project. The backend runs Claude Code with Bash, Write, and Edit against a real repository, holding real credentials, and pushes the result to GitHub. **Read this section before writing any code that touches an agent run.**
 
-- **Do not loosen the Agent SDK permission mode** (e.g. a mode that bypasses all confirmations) without discussing it explicitly with the user. If a task seems to need it, raise it as a decision rather than quietly wiring it in.
-- **A ticket is only executed when the user moved it** (section 0, point 3). Never add an automatic path that triggers execution without a user action.
-- **The target repo must be explicit.** Never run the agent with a working directory derived from implicit state — always the path recorded for that ticket.
-- **GitHub credentials come from env vars**, and never appear in source, logs, API responses, or prompts sent to the model.
-- **Do not log prompt/response bodies that may contain secrets.** Log metadata (ticket id, repo, duration, status), not raw payloads.
+### 6.1 The threat model, stated plainly
+
+Ticket text is untrusted input that becomes instructions for a process with shell access:
+
+```
+chat content → AI writes a ticket → user drags → agent runs (Bash/Write/Edit) → push to GitHub
+```
+
+Everything upstream of that chain is attacker-reachable in ordinary use: a pasted error log, a stack trace copied off a forum, a quoted web page, a dependency's README, an issue body. The agent also **reads the target repo**, so that repository's own contents — comments, fixtures, docs, config files — are untrusted input as well.
+
+Treat every string that reaches an agent run as potentially adversarial, including strings the AI itself wrote. An instruction injected into a persona's context can be laundered into a ticket that the persona authors in good faith.
+
+**Do not try to solve this by filtering.** There is no regex, keyword list, or "sanitize the prompt" step that makes untrusted text safe to hand a shell-capable agent. Every control below works by limiting what a compromised run can *reach* — not by trying to recognize a malicious ticket.
+
+### 6.2 What the drag gate does and does not do
+
+Section 0, point 3 makes the user's drag the only trigger for execution. That is real and necessary, but be precise about its scope:
+
+- It gates **when** a run happens. It does **not** gate **what** the run does.
+- The user approves by looking at a card. The agent receives the full ticket body and then reads an entire repository.
+- It is a launch button, not a code review.
+
+Never cite the drag gate as the reason some other control is unnecessary.
+
+### 6.3 Non-negotiable controls
+
+Requirements, not preferences. If a task appears to need one of these weakened, **stop and ask the user** — do not weaken it and mention it afterwards.
+
+1. **Every agent run is isolated.** A container (or equivalent boundary) per run, with only the target repo mounted. No app `.env`, no app database, no other repos on the host, no SSH keys, no host home directory. **`cwd` is not a boundary** — passing a path does not stop `cd ..`; the mount does.
+2. **The runner gets its own credentials.** An `ANTHROPIC_API_KEY` separate from the app's, so agent spend can be budgeted and revoked on its own. A GitHub credential scoped to the target repos only — a fine-grained PAT with `contents:write`, or a GitHub App. Never an account-wide classic token.
+3. **Never push to a target repo's default branch.** A run pushes to its own branch and opens a PR. This restores the human review of the diff that step 5 of the product flow otherwise removes. Direct push to `main`/`master` is prohibited.
+4. **Never bypass the Agent SDK permission model.** Do not enable a mode that auto-approves every tool call because it makes a task easier. If a run genuinely needs broader permission, that is the user's decision, recorded in a spec.
+5. **Restrict network egress from the run** to what it needs. A run that can reach arbitrary hosts can exfiltrate anything it can read.
+6. **The app binds to localhost and stays there until it has authentication.** An unauthenticated endpoint that triggers arbitrary code execution and a git push is the worst thing in this codebase to expose. CORS origins stay an explicit allowlist — never `*`.
+
+### 6.4 Rules for code that drives a run
+
+- **Nothing from a ticket's prose may choose a target.** Repo, branch, credential, and working directory come from the ticket's **record** — typed columns and foreign keys — never parsed out of its text, and never out of the agent's output.
+- **Never interpolate ticket text** into a shell command, a path, or a git argument.
+- **Never feed agent output into a privileged action** without a typed check. Model output is data, not a command.
+- **Log metadata, not payloads.** Ticket id, repo, branch, duration, status, exit reason. Never prompt bodies, agent transcripts, diffs, or environment contents.
+- **A failed or interrupted run must still tear down its workspace** and any credential material it was given. Cleanup belongs in a `finally`, not on the happy path.
+
+### 6.5 Changing this section
+
+How runs are isolated, credentialed, or pushed is an architectural decision. Any change to it needs its own spec and the user's approval (section 4) — never fold one into an unrelated task.
 
 ---
 
 ## 7. Configuration & Secrets
 
 - Every secret (DB password, `ANTHROPIC_API_KEY`, GitHub token, etc.) comes from env vars (`.env`) — **never** hardcoded in source.
+- **The app's secrets and the agent runner's secrets are two separate sets** (section 6.3, item 2). The app's `.env` must never be reachable from inside a run — not mounted, not inherited through the environment, not passed as arguments.
+- Secrets never appear in source, logs, API responses, error messages returned to the client, or any prompt sent to a model.
 - `.env` is **never** committed. `.env.example` (without real values) may be committed.
 - `.venv/` is never committed.
 - `.gitignore` already exists at the root. When adding tooling that produces new artifacts, add its patterns there.

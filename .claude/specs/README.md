@@ -96,7 +96,7 @@ commits: []
 
 **Non-trivial** tasks:
 - Changes across > 1 file.
-- A new feature (new API endpoint, new service, new DB model, AI provider integration, etc.).
+- A new feature (new API endpoint, new service, new DB model, a new Claude Agent SDK integration point, etc.).
 - Refactors / architectural decisions (e.g. changing the `app/` structure, changing the dependency injection pattern).
 - Bug fixes that require analysis (not typos).
 - Database migrations (Alembic) that change the schema.
