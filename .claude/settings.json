@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install -r requirements.txt)",
+      "Bash(pip list)",
+      "Bash(pip show *)",
+      "Bash(python -m venv .venv)",
+      "Bash(uvicorn app.main:app --reload*)",
+      "Bash(pytest*)",
+      "Bash(python -m pytest*)",
+      "Bash(alembic current)",
+      "Bash(alembic heads)",
+      "Bash(alembic history*)",
+      "Bash(git remote -v)",
+      "Bash(git status)",
+      "Bash(git status --short)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git branch:*)",
+      "Bash(git check-ignore:*)",
+      "WebFetch(domain:code.claude.com)",
+      "WebFetch(domain:docs.claude.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:fastapi.tiangolo.com)",
+      "WebFetch(domain:docs.sqlalchemy.org)",
+      "WebFetch(domain:alembic.sqlalchemy.org)"
+    ],
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git push --all:*)",
+      "Bash(git push --mirror:*)",
+      "Bash(git remote add:*)",
+      "Bash(git remote remove:*)",
+      "Bash(git remote set-url:*)"
+    ]
+  }
+}

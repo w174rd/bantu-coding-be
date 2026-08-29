@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Test & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Type checkers & linters
+.mypy_cache/
+.ruff_cache/
+
+# Claude Code — per-device, never committed
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Target repos cloned by the agent at runtime (see CLAUDE.md section 1b)
+workspaces/
