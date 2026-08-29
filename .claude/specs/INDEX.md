@@ -17,11 +17,14 @@ Entry format:
 
 - `2026-08-29` [**initial-scaffolding**](plans-executed/2026-08-29-initial-scaffolding.md) — BE scaffolding: `app/` layout, Pydantic Settings, SQLAlchemy session, Alembic wiring. No endpoints — `/health` rejected by user as ceremony | hints: initial-scaffolding, fastapi-scaffolding, no-health-endpoint-by-user-decision, alembic-env-py-no-set_main_option, configparser-percent-interpolation-password, quote_plus-database-url, cors_origins-str-not-list-pydantic-settings-json-parse, python-dotenv-transitive-not-direct, docs-openapi-public-no-auth, pg18-port-5433-not-5432, pg17-owns-default-5432, psql-on-path-is-17.2, bare-python-32bit-3.10, py-3.12-venv-required, alembic-current-auth-failure-proves-wiring, DeclarativeBase-sqlalchemy-2.0, pool_pre_ping, no-ticket-model-board-columns-undecided, infrastructure-identifiers-not-published, testuser-testdb-generic-fixtures
 
+## Tickets & Board
+> grep keywords: ticket, status, enum, migration, alembic, autogenerate, crud, api, envelope, board, columns
+
+- `2026-08-29` [**ticket-model-and-crud**](plans-executed/2026-08-29-ticket-model-and-crud.md) — `Ticket` model, the repo's first migration, and five CRUD routes at `/api/v1/tickets`. Board columns and no-envelope conventions settled here | hints: ticket-model, ticket-crud, first-migration, alembic-autogenerate-empty-migration, env-py-must-import-app-models, models-init-import-not-enough, drop_table-leaves-enum-type-behind, sa-Enum-drop-op-get-bind, downgrade-upgrade-roundtrip-proves-enum-drop, values_callable-lowercase-enum-values, native-postgres-enum-ticket_status, no-response-envelope-decision, api-v1-resource-url-shape, exclude_unset-patch-semantics, updated_at-onupdate-verified, pg18-4-port-5433, board-columns-backlog-in_progress-in_review-done, in_review-exists-because-PR-not-push, auto-advance-does-not-violate-drag-gate
+
 ---
 
 Areas expected as the product grows — create each section when its first entry exists:
-
-- **FastAPI Foundation** — first real endpoint, response envelope
 - **Multi-Persona Chat** — personas, conversations, messages
 - **Tickets & Board** — backlog, columns, drag-to-progress
 - **Agent Execution** — Claude Agent SDK, job lifecycle, progress streaming
