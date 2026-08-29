@@ -230,7 +230,8 @@ How runs are isolated, credentialed, or pushed is an architectural decision. Any
 - Every secret (DB password, `ANTHROPIC_API_KEY`, GitHub token, etc.) comes from env vars (`.env`) — **never** hardcoded in source.
 - **The app's secrets and the agent runner's secrets are two separate sets** (section 6.3, item 2). The app's `.env` must never be reachable from inside a run — not mounted, not inherited through the environment, not passed as arguments.
 - Secrets never appear in source, logs, API responses, error messages returned to the client, or any prompt sent to a model.
-- `.env` is **never** committed. `.env.example` (without real values) may be committed.
+- `.env` is **never** committed. `.env.example` may be committed.
+- **Infrastructure identifiers are not published either — not just passwords.** Real database names, roles, hostnames, and bucket or repo names stay out of every committed file: `.env.example`, specs, tests, fixtures, and docs. `.env.example` documents the *shape* of configuration with blank values, never the actual ones. Tests use generic placeholders (`testuser`, `testdb`) so that committed code carries no real identifier.
 - `.venv/` is never committed.
 - `.gitignore` already exists at the root. When adding tooling that produces new artifacts, add its patterns there.
 
