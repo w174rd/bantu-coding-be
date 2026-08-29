@@ -22,10 +22,14 @@ Entry format:
 
 - `2026-08-29` [**ticket-model-and-crud**](plans-executed/2026-08-29-ticket-model-and-crud.md) — `Ticket` model, the repo's first migration, and five CRUD routes at `/api/v1/tickets`. Board columns and no-envelope conventions settled here | hints: ticket-model, ticket-crud, first-migration, alembic-autogenerate-empty-migration, env-py-must-import-app-models, models-init-import-not-enough, drop_table-leaves-enum-type-behind, sa-Enum-drop-op-get-bind, downgrade-upgrade-roundtrip-proves-enum-drop, values_callable-lowercase-enum-values, native-postgres-enum-ticket_status, no-response-envelope-decision, api-v1-resource-url-shape, exclude_unset-patch-semantics, updated_at-onupdate-verified, pg18-4-port-5433, board-columns-backlog-in_progress-in_review-done, in_review-exists-because-PR-not-push, auto-advance-does-not-violate-drag-gate
 
+## Multi-Persona Chat
+> grep keywords: persona, cast, conversation, message, discussion, room, document, upload, provider, agnostic, encryption, sse
+
+- `2026-08-29` [**discussion-room-data-layer**](plans-executed/2026-08-29-discussion-room-data-layer.md) — Four-persona cast, conversation/message tables, `.txt`/`.md` ingest, and a provider-agnostic `ai_provider_configs` table modelled on `nara-persona-api`. **Migration written but never applied — DB credentials were blank** | hints: discussion-room, persona-cast, four-personas, architect-researcher-challenger-arbiter, role-names-not-personal-names, provider-agnostic, nara-persona-api-reference, AIProvider-ABC, ai_provider_configs, runtime-provider-switch, fernet-encrypted-api-key, AI_CONFIG_ENCRYPTION_KEY, api_key_preview-never-the-key, unreadable-preview-after-rotation, exclusive-activation-route-layer, no-partial-unique-index-autoflush-ordering, nara-defect-claim-was-wrong, persona_role-native-enum, message_author_kind-native-enum, round_index-forward-looking, source_name-display-only, document-ingest-txt-md-only, utf8-decode-required, 256KiB-cap, read-max_bytes-plus-one, filename-never-a-path, untrusted-document-6.1-laundering, messages-ordered-by-id-not-created_at, cascade-delete-conversation, migration-hand-written-never-applied, blank-db-credentials-blocked-verification, fe_sendauth-no-password-supplied, bulk_insert-native-enum-risk, postgresql-ENUM-create_type-False-fallback, python-multipart-required-for-UploadFile, services-documents-pure-function, claude-md-repo-is-empty-still-stale, fe-claude-md-status-was-stale
+
 ---
 
 Areas expected as the product grows — create each section when its first entry exists:
-- **Multi-Persona Chat** — personas, conversations, messages
 - **Tickets & Board** — backlog, columns, drag-to-progress
 - **Agent Execution** — Claude Agent SDK, job lifecycle, progress streaming
 - **Git & GitHub Integration** — cloning target repos, auto commit, PR flow, credentials
