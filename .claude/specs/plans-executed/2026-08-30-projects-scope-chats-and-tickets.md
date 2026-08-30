@@ -1,9 +1,9 @@
 ---
 date: 2026-08-30
 title: Projects scope every chat and ticket
-status: in-progress
+status: done
 tags: [project, model, migration, api, target-repo, breaking-change]
-commits: []
+commits: [ca1c596]
 ---
 
 # Projects scope every chat and ticket
@@ -213,19 +213,156 @@ Tests stay pure-Python, no database, as the suite already is.
 <!-- Filled in when status = in-progress -->
 ## Progress
 
-- [ ] `Project` model + registry
-- [ ] `project_id` on `Ticket` and `Conversation`
-- [ ] Migration (delete → create → FKs), `upgrade` and `downgrade` round-trip verified
-- [ ] Schemas
-- [ ] `app/api/projects.py` + router registration
-- [ ] `project_id` validation on the two create routes
-- [ ] Arbiter inherits the project
-- [ ] Tests green
-- [ ] `README.md` and `CLAUDE.md` updated
+- [x] `Project` model + registry
+- [x] `project_id` on `Ticket` and `Conversation`
+- [x] Migration (delete → create → FKs), `upgrade` and `downgrade` round-trip verified
+- [x] Schemas
+- [x] `app/api/projects.py` + router registration
+- [x] `project_id` validation on the two create routes
+- [x] Arbiter inherits the project
+- [x] Tests green
+- [x] `README.md` and `CLAUDE.md` updated
 
 ---
 
 <!-- Filled in when status = done / reverted / cancelled -->
 ## Results & Execution Notes
 
+Built as planned. `projects` is the container; `tickets.project_id` and `conversations.project_id` are both
+NOT NULL with `ON DELETE CASCADE`, so "every chat and ticket belongs to a project" is a database guarantee
+rather than a convention. Seven routes in `app/api/projects.py`, registered in `app/main.py`.
+
+### Deviations from the plan
+
+- **`index=True` on both new FK columns.** Not planned. `alembic check` flagged the indexes the migration
+  creates as absent from `Base.metadata`, so autogenerate would have emitted a migration dropping them. The
+  models now declare what the migration builds.
+- **The Arbiter test drives `_record` through a fake session.** The plan said "extend the existing
+  assertion", but the invariant worth proving — a ticket takes its project from the conversation record, not
+  from the model's JSON — lives in `_record`, not in `parse_verdict`. A 15-line `_FakeSession` (add / flush /
+  commit / refresh) makes it testable without a database, keeping the suite DB-free as it has always been.
+  Three tests: inheritance, a `project_id` planted in the model output being ignored, and a split verdict
+  putting all its cards in one project.
+- **No GitHub credential column.** The spec asked the user to settle this at approval; they approved without
+  overriding the recommendation, so it stays out. A live `contents:write` token in a table nothing reads is
+  exposure with no benefit while the app has no auth, and the column's shape (PAT per project vs. shared vs.
+  GitHub App) belongs with the code that consumes it. Recorded in CLAUDE.md section 0 so it does not read as
+  an oversight.
+- **CLAUDE.md's status block and section 1a were rewritten too**, beyond the planned "core concepts + the
+  decision bullet". They were already stale before this task (they claimed the database was unmigrated and
+  `git remote -v` empty); this change made them wronger — three migrations became five, eighteen endpoints
+  became 26 over 15 paths. Leaving them would have shipped a knowingly false document.
+
+### Verification
+
+- `pytest` — 77 passed, up from 61.
+- `alembic upgrade head`, then `downgrade -1` → `upgrade head` again: clean round trip.
+- A live `TestClient` run against the real database, since the suite deliberately has no DB coverage:
+  create → `201`; duplicate name → `409`; `ssh://` `repo_url` → `422`; ticket with no `project_id` → `422`;
+  unknown project → `404`; nested lists return the right rows; deleting the project cascaded the ticket and
+  the room to `404`. Test rows removed afterwards.
+
+### What was deleted
+
+8 tickets, 2 conversations, 9 messages, 1 verdict — everything predating projects, on the user's
+instruction. That included `#12` and `#13`, the rows the previous spec left open questions about, and the
+five hand-split tickets `#14`–`#18`. `personas` (4 rows) and `ai_provider_configs` (1 row) survived.
+`downgrade()` does not restore any of it.
+
+### Still open
+
+- **Pre-existing drift, not introduced here:** `alembic check` still reports `ix_tickets_verdict_id`.
+  Migration `22b059f01724` created that index but `Ticket.verdict_id` never declared `index=True`, so
+  autogenerate wants to drop it. One line in the model fixes it; left alone as out of scope (section 4).
+- Whether `GET /tickets` and `GET /conversations` should survive as unfiltered all-project views. Kept for
+  now; the user was asked and did not object.
+- Moving a ticket between projects. `TicketUpdate` deliberately has no `project_id`, and a test asserts it.
+
+---
+
+## FE Handoff — `bantu-coding-fe`
+
+**This is a breaking API change.** The FE has no project concept; until it has one, creating a ticket or a
+conversation fails with `422`. Recorded here per CLAUDE.md section 10.
+
+### What changed
+
+| Endpoint | Change |
+|---|---|
+| `POST /api/v1/tickets` | `project_id: number` now **required** in the body. Unknown id → `404`. |
+| `POST /api/v1/conversations` | Same. |
+| `GET /api/v1/tickets` | Unchanged, but now returns tickets across **all** projects. |
+| `GET /api/v1/conversations` | Same. |
+| `TicketRead` / `ConversationRead` | Both gained `project_id: number`. |
+
+New endpoints:
+
+```
+GET    /api/v1/projects                    -> Project[]
+POST   /api/v1/projects                    -> Project        (409 on duplicate name)
+GET    /api/v1/projects/{id}               -> Project
+PATCH  /api/v1/projects/{id}               -> Project
+DELETE /api/v1/projects/{id}               -> 204            (cascades: rooms and board go too)
+GET    /api/v1/projects/{id}/tickets       -> Ticket[]
+GET    /api/v1/projects/{id}/conversations -> Conversation[]
+```
+
+### The type
+
+```ts
+export type Project = {
+  id: number
+  name: string
+  description: string | null
+  repo_url: string | null       // https:// only -- the API rejects anything else with 422
+  default_branch: string | null // the PR base, never a push target
+  created_at: string
+  updated_at: string
+}
+
+export type ProjectCreate = {
+  name: string
+  description?: string | null
+  repo_url?: string | null
+  default_branch?: string | null
+}
+
+export type ProjectUpdate = Partial<ProjectCreate>
+```
+
+### Files to touch
+
+- `src/types/api.ts` — add `Project`, `ProjectCreate`, `ProjectUpdate`; add `project_id: number` to `Ticket`
+  and `Conversation`; add `project_id: number` to `TicketCreate`. Leave `TicketUpdate` alone — the backend
+  rejects a project change there by design.
+- `src/api/projects.ts` — **new**, mirroring `src/api/tickets.ts`.
+- `src/api/tickets.ts` — `listTickets()` should take a project id and call
+  `/api/v1/projects/{id}/tickets`; `createTicket` sends `project_id`.
+- `src/api/conversations.ts` — `listConversations()` likewise; `createConversation(projectId, title)`.
+- `src/state/TicketsContext.tsx`, `src/state/ConversationContext.tsx` — both need the active project. A
+  `ProjectContext` above them is the obvious shape: nothing below it can load without a project id.
+- `src/routes/Board.tsx`, `src/routes/Chat.tsx` — need a project selected before they can render anything.
+- `src/components/NewTicketForm.tsx` — pass the active project.
+- A project picker, and a first-run "name your project" screen. With the database emptied there are now
+  **zero** projects, so an empty state that can create the first one is not optional — without it the app
+  has no reachable path to any content.
+
+### Two behaviours worth designing for
+
+- `409` on a duplicate project name. Show it on the name field; do not swallow it.
+- `DELETE /projects/{id}` destroys the project's whole board and every room, immediately, with no
+  confirmation server-side. `ConfirmDeleteDialog` already exists — this is a case that warrants naming what
+  is about to be lost.
+
 ## Recall Hints
+
+projects, project-model, project-container, projects-scope-chats-and-tickets, project_id-not-null,
+cascade-delete-project, tickets-project_id, conversations-project_id, unique-project-name, 409-duplicate-name,
+repo_url-https-only, urlparse-scheme-check, typed-column-not-prose-6.4, default_branch-is-pr-base,
+no-credential-column-yet, credential-deferred-to-agent-spec, target-repo-record-lives-on-projects,
+settled-open-decision, migration-db5519dc8798, migration-deletes-data, delete-before-not-null,
+child-first-delete-order, downgrade-does-not-restore, alembic-check-index-drift, index-true-on-fk-columns,
+ix_tickets_verdict_id-preexisting-drift, nested-list-routes, projects-id-tickets, projects-id-conversations,
+arbiter-inherits-conversation-project, _FakeSession-record-test, db-free-suite-still, TicketUpdate-no-project_id,
+no-ticket-reassignment, fe-breaking-change, fe-project-picker-required, fe-empty-database-after-migration,
+claude-md-status-block-rewritten, remote-exists-now, 26-endpoints-15-paths

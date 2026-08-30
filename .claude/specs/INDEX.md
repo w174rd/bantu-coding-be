@@ -31,6 +31,11 @@ Entry format:
 
 - `2026-08-30` [**arbiter-splits-complex-work**](plans-executed/2026-08-30-arbiter-splits-complex-work.md) — One verdict can now produce several tickets; the FK inverts to `tickets.verdict_id`. **First spec verified against the real database** | hints: arbiter-splits-tickets, one-verdict-many-tickets, tickets-verdict_id, fk-inversion, drop-verdicts-ticket_id, data-migration-carry-link-before-drop, lossy-downgrade-min-ticket-id, MAX_TICKETS_PER_VERDICT, cap-8, flood-the-board, ArbiterVerdict-tickets-list, no-status-field-still, backlog-only-still, drag-gate-in-code, split-instruction-independently-shippable, dependency-order-by-id, one-ticket-when-one-job, db-flush-before-child-tickets, TYPE_CHECKING-circular-import-ticket-verdict, ticket_ids-model-property, VerdictRead-ticket_ids, TicketRead-verdict_id, fe-VerdictCard-ticket_ids, first-spec-verified-against-real-db, verdict-1-ticket-12-live-data
 
+## Projects & Target Repos
+> grep keywords: project, container, scope, project_id, repo_url, default_branch, target repo, cascade, credential
+
+- `2026-08-30` [**projects-scope-chats-and-tickets**](plans-executed/2026-08-30-projects-scope-chats-and-tickets.md) — `Project` becomes the container every conversation and ticket belongs to, and where the target repo is recorded. **Breaking API change for the FE; the migration deleted every pre-project row** | hints: projects, project-container, project_id-not-null, cascade-delete-project, unique-project-name, 409-duplicate-name, repo_url-https-only, urlparse-scheme-check, typed-column-not-prose-6.4, default_branch-is-pr-base, no-credential-column-yet, target-repo-record-lives-on-projects, settled-open-decision, migration-db5519dc8798, migration-deletes-data, delete-before-not-null, downgrade-does-not-restore, alembic-check-index-drift, index-true-on-fk-columns, ix_tickets_verdict_id-preexisting-drift, nested-list-routes, arbiter-inherits-conversation-project, _FakeSession-record-test, TicketUpdate-no-project_id, fe-breaking-change, fe-project-picker-required, claude-md-status-block-rewritten, 26-endpoints-15-paths
+
 ---
 
 Areas expected as the product grows — create each section when its first entry exists:
