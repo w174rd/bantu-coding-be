@@ -1,10 +1,14 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, String, Text, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.enums import TicketStatus
 from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.models.verdict import Verdict
 
 
 class Ticket(Base):
@@ -24,9 +28,16 @@ class Ticket(Base):
         default=TicketStatus.BACKLOG,
         server_default=TicketStatus.BACKLOG.value,
     )
+    # Null for every ticket written by hand on the board, which is the normal case.
+    # SET NULL on delete: losing the verdict must not delete the work it proposed.
+    verdict_id: Mapped[int | None] = mapped_column(
+        ForeignKey("verdicts.id", ondelete="SET NULL"), default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+    verdict: Mapped["Verdict | None"] = relationship(back_populates="tickets")

@@ -14,7 +14,7 @@ from app.models.message import Message
 from app.models.persona import Persona
 from app.models.ticket import Ticket
 from app.models.verdict import Verdict, VerdictOption
-from app.schemas.verdict import ArbiterVerdict
+from app.schemas.verdict import MAX_TICKETS_PER_VERDICT, ArbiterVerdict
 from app.services.ai.base import AIProvider, AIProviderError
 from app.services.discussion import build_provider_messages, window
 
@@ -28,13 +28,29 @@ Answer with a single JSON object and nothing else. No prose before or after, no 
   "options": [
     {"label": "short name of the option", "percentage": 60, "rationale": "why it scored this"}
   ],
-  "ticket": {"title": "imperative title, at most 200 characters", "body": "a Markdown planning \
+  "tickets": [
+    {"title": "imperative title, at most 200 characters", "body": "a Markdown planning \
 document with ## Context, ## Goal, ## Approach and ## Risks / Trade-offs sections"}
+  ]
 }
 
 Score only options that were actually proposed in the discussion. The percentages are your
-confidence that each option is the right one to build, and they must add up to 100. The ticket
-describes the winning option — the one you scored highest."""
+confidence that each option is the right one to build, and they must add up to 100. The tickets
+describe the winning option — the one you scored highest.
+
+How to divide the work into tickets:
+
+- One ticket per **independently shippable** step — something a developer could pick up and
+  finish on its own, not a phase of a single job.
+- If the winning option is genuinely one job, return **one** ticket. Splitting small work is as
+  wrong as leaving large work in a single card.
+- Never more than %d tickets. If the work needs more than that, the option is too big to decide
+  on yet — say so in the headline and return the largest coherent first step instead.
+- Order them so that anything a ticket depends on comes earlier in the list.
+- Each ticket must be readable on its own: its own Context, Goal, Approach and Risks, and a
+  sentence naming what it depends on. A card nobody can act on alone is a fragment, not a ticket.
+- Keep a constraint in the ticket whose work it constrains. Do not collect the risks of five
+  tickets into a sixth.""" % MAX_TICKETS_PER_VERDICT
 
 _JSON_OBJECT = re.compile(r"\{.*\}", re.DOTALL)
 _SUM_TOLERANCE = 5
@@ -83,21 +99,10 @@ def parse_verdict(raw: str) -> ArbiterVerdict:
 def _record(
     db: Session, conversation: Conversation, arbiter: Persona, round_index: int, verdict: ArbiterVerdict
 ) -> tuple[Verdict, Message]:
-    ticket = Ticket(
-        title=verdict.ticket.title,
-        body=verdict.ticket.body,
-        # Never read from the model. The drag gate (CLAUDE.md section 0, point 3) says
-        # only the user may put work into In Progress; this line is that rule in code.
-        status=TicketStatus.BACKLOG,
-    )
-    db.add(ticket)
-    db.flush()
-
     record = Verdict(
         conversation_id=conversation.id,
         round_index=round_index,
         headline=verdict.headline,
-        ticket_id=ticket.id,
         options=[
             VerdictOption(
                 label=option.label,
@@ -109,6 +114,29 @@ def _record(
         ],
     )
     db.add(record)
+    db.flush()
+
+    # Written in the order the Arbiter returned them: it is instructed to put
+    # dependencies first, and ascending ids in that order is what the board reads.
+    for proposed in verdict.tickets:
+        db.add(
+            Ticket(
+                title=proposed.title,
+                body=proposed.body,
+                # Never read from the model. The drag gate (CLAUDE.md section 0, point 3)
+                # says only the user may put work into In Progress; this line is that rule
+                # in code, and splitting multiplies cards, never authority.
+                status=TicketStatus.BACKLOG,
+                verdict_id=record.id,
+            )
+        )
+
+    listed = "\n".join(f"- {proposed.title}" for proposed in verdict.tickets)
+    label = (
+        "Ticket created"
+        if len(verdict.tickets) == 1
+        else f"{len(verdict.tickets)} tickets created"
+    )
 
     # The Arbiter also speaks in the room. Without this the chart appears with no
     # turn in the transcript explaining it, and the discussion reads as if it stopped.
@@ -116,7 +144,7 @@ def _record(
         conversation_id=conversation.id,
         author_kind=MessageAuthorKind.PERSONA,
         persona_id=arbiter.id,
-        content=f"{verdict.headline}\n\nTicket created: **{verdict.ticket.title}**",
+        content=f"{verdict.headline}\n\n**{label}:**\n{listed}",
         round_index=round_index,
     )
     db.add(spoken)
@@ -156,10 +184,10 @@ async def run_verdict(
     record, spoken = _record(db, conversation, arbiter, round_index, verdict)
 
     logger.info(
-        "verdict recorded conversation=%s round=%s options=%s ticket=%s",
+        "verdict recorded conversation=%s round=%s options=%s tickets=%s",
         conversation.id,
         round_index,
         len(record.options),
-        record.ticket_id,
+        record.ticket_ids,
     )
     return record, spoken

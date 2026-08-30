@@ -23,5 +23,6 @@ class TicketRead(BaseModel):
     title: str
     body: str | None
     status: TicketStatus
+    verdict_id: int | None
     created_at: datetime
     updated_at: datetime

@@ -88,10 +88,17 @@ Streaming is **message-level**: a persona appears when it finishes. This is what
 code path in every adapter.
 
 **The Arbiter's output is the sharpest boundary in the chat half of this codebase.** It emits JSON that becomes
-a ticket, so §6.4 applies in full: it is parsed, validated through `ArbiterVerdict`, and only then written.
+tickets, so §6.4 applies in full: it is parsed, validated through `ArbiterVerdict`, and only then written.
 `ArbiterTicket` has **no status field** — the ticket status is hardcoded to `BACKLOG` in `app/services/arbiter.py`.
 That is the drag gate expressed in code, and `tests/test_arbiter_verdict.py` asserts it. Do not add a status
 field to that schema.
+
+**One verdict produces one *or several* tickets.** The Arbiter splits work that has independently shippable
+parts, ordered so each unblocks the next, and returns one ticket when the job is genuinely one job. The foreign
+key therefore lives on `tickets.verdict_id` (null for anything written by hand on the board), not on the
+verdict. `ArbiterVerdict.tickets` is capped at `MAX_TICKETS_PER_VERDICT` — every entry is a row written on the
+model's say-so, and the cap is what stops a confused Arbiter flooding the board in one write. Splitting
+multiplies the cards, never the authority: all of them still land in Backlog.
 
 Vendor exception text is **never** forwarded to a client — it can echo the request it came from, and the API key
 travels in that request. `AIProviderError.safe_to_display` marks the messages this codebase wrote itself; only

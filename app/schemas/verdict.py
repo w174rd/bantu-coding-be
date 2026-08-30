@@ -20,7 +20,7 @@ class VerdictRead(BaseModel):
     conversation_id: int
     round_index: int
     headline: str
-    ticket_id: int | None
+    ticket_ids: list[int]
     created_at: datetime
     options: list[VerdictOptionRead]
 
@@ -38,6 +38,9 @@ class ArbiterTicket(BaseModel):
     body: str = Field(min_length=1)
 
 
+MAX_TICKETS_PER_VERDICT = 8
+
+
 class ArbiterVerdict(BaseModel):
     """The typed gate every Arbiter response must pass before anything is written.
 
@@ -48,4 +51,6 @@ class ArbiterVerdict(BaseModel):
 
     headline: str = Field(min_length=1)
     options: list[ArbiterOption] = Field(min_length=1)
-    ticket: ArbiterTicket
+    # Capped because every entry becomes a row this code writes on the model's say-so.
+    # A confused Arbiter must not be able to flood the board in a single verdict.
+    tickets: list[ArbiterTicket] = Field(min_length=1, max_length=MAX_TICKETS_PER_VERDICT)

@@ -3,6 +3,7 @@ import json
 import pytest
 
 from app.core.enums import TicketStatus
+from app.schemas.verdict import MAX_TICKETS_PER_VERDICT
 from app.services.ai.base import AIProviderError
 from app.services.arbiter import parse_verdict
 
@@ -12,7 +13,7 @@ VALID = {
         {"label": "Queue", "percentage": 70, "rationale": "absorbs bursts"},
         {"label": "Retry loop", "percentage": 30, "rationale": "simpler but drops work"},
     ],
-    "ticket": {"title": "Add a job queue", "body": "## Context\nIt crashes under load."},
+    "tickets": [{"title": "Add a job queue", "body": "## Context\nIt crashes under load."}],
 }
 
 
@@ -39,8 +40,8 @@ def test_malformed_json_is_rejected():
         parse_verdict('{"headline": "oops", "options": [,]}')
 
 
-def test_missing_ticket_is_rejected():
-    payload = {k: v for k, v in VALID.items() if k != "ticket"}
+def test_missing_tickets_is_rejected():
+    payload = {k: v for k, v in VALID.items() if k != "tickets"}
 
     with pytest.raises(AIProviderError, match="failed validation"):
         parse_verdict(json.dumps(payload))
@@ -52,7 +53,7 @@ def test_empty_options_is_rejected():
 
 
 def test_overlong_title_is_rejected():
-    payload = {**VALID, "ticket": {"title": "x" * 201, "body": "b"}}
+    payload = {**VALID, "tickets": [{"title": "x" * 201, "body": "b"}]}
 
     with pytest.raises(AIProviderError, match="failed validation"):
         parse_verdict(json.dumps(payload))
@@ -88,9 +89,64 @@ def test_percentages_far_from_100_are_rejected():
 def test_a_status_in_the_model_output_is_not_a_field_the_verdict_can_carry():
     # The drag gate in code: the Arbiter has no channel through which to place a
     # ticket anywhere but Backlog, because ArbiterTicket has no status field at all.
-    payload = {**VALID, "ticket": {**VALID["ticket"], "status": "in_progress"}}
+    # Splitting multiplies the cards, never the authority.
+    payload = {**VALID, "tickets": [{**VALID["tickets"][0], "status": "in_progress"}]}
 
     verdict = parse_verdict(json.dumps(payload))
 
-    assert not hasattr(verdict.ticket, "status")
+    assert not hasattr(verdict.tickets[0], "status")
     assert TicketStatus.BACKLOG.value == "backlog"
+
+
+def test_a_single_ticket_still_works():
+    # The common case must not regress: not every decision is complex enough to split.
+    verdict = parse_verdict(json.dumps(VALID))
+
+    assert len(verdict.tickets) == 1
+    assert verdict.tickets[0].title == "Add a job queue"
+
+
+def test_several_tickets_keep_their_order():
+    # Order is the dependency order: the Arbiter is told to put what unblocks the
+    # rest first, and tickets are written -- so numbered -- in that sequence.
+    payload = {
+        **VALID,
+        "tickets": [
+            {"title": f"Step {n}", "body": f"## Goal\nDo step {n}."} for n in (1, 2, 3)
+        ],
+    }
+
+    verdict = parse_verdict(json.dumps(payload))
+
+    assert [t.title for t in verdict.tickets] == ["Step 1", "Step 2", "Step 3"]
+
+
+def test_empty_ticket_list_is_rejected():
+    with pytest.raises(AIProviderError, match="failed validation"):
+        parse_verdict(json.dumps({**VALID, "tickets": []}))
+
+
+def test_more_tickets_than_the_cap_is_rejected():
+    # Without the cap a confused Arbiter can flood the board in one write.
+    payload = {
+        **VALID,
+        "tickets": [
+            {"title": f"Step {n}", "body": "## Goal\nx"}
+            for n in range(MAX_TICKETS_PER_VERDICT + 1)
+        ],
+    }
+
+    with pytest.raises(AIProviderError, match="failed validation"):
+        parse_verdict(json.dumps(payload))
+
+
+def test_exactly_the_cap_is_accepted():
+    payload = {
+        **VALID,
+        "tickets": [
+            {"title": f"Step {n}", "body": "## Goal\nx"}
+            for n in range(MAX_TICKETS_PER_VERDICT)
+        ],
+    }
+
+    assert len(parse_verdict(json.dumps(payload)).tickets) == MAX_TICKETS_PER_VERDICT

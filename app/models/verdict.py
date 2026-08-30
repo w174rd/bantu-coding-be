@@ -1,13 +1,21 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
+if TYPE_CHECKING:
+    from app.models.ticket import Ticket
+
 
 class Verdict(Base):
-    """One Arbiter decision: the reasoning, the scored options, and the ticket."""
+    """One Arbiter decision: the reasoning, the scored options, and its tickets.
+
+    A verdict may produce several tickets — the Arbiter splits work that has
+    independently shippable parts — so the foreign key lives on `tickets`, not here.
+    """
 
     __tablename__ = "verdicts"
 
@@ -17,11 +25,6 @@ class Verdict(Base):
     )
     round_index: Mapped[int] = mapped_column(Integer)
     headline: Mapped[str] = mapped_column(Text)
-    # SET NULL rather than CASCADE: deleting the ticket should not erase the
-    # reasoning that produced it.
-    ticket_id: Mapped[int | None] = mapped_column(
-        ForeignKey("tickets.id", ondelete="SET NULL"), default=None
-    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -31,6 +34,15 @@ class Verdict(Base):
         cascade="all, delete-orphan",
         order_by="VerdictOption.display_order",
     )
+    # Ordered by id, which is insertion order: the Arbiter returns its tickets with
+    # dependencies first, and they are written in that order.
+    tickets: Mapped[list["Ticket"]] = relationship(
+        back_populates="verdict", order_by="Ticket.id"
+    )
+
+    @property
+    def ticket_ids(self) -> list[int]:
+        return [ticket.id for ticket in self.tickets]
 
 
 class VerdictOption(Base):
