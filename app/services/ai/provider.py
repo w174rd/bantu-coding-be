@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.security import decrypt, get_ai_config_key
 from app.models.ai_provider_config import AiProviderConfig
+from app.models.persona import Persona
 from app.services.ai.base import AIProvider, AIProviderError
 
 logger = logging.getLogger(__name__)
@@ -130,10 +131,29 @@ _PROVIDER_CLASSES: dict[str, type[AIProvider]] = {
 }
 
 
-def get_provider(db: Session) -> AIProvider:
-    config = db.scalars(
-        select(AiProviderConfig).where(AiProviderConfig.is_active.is_(True))
-    ).one_or_none()
+def get_provider(db: Session, persona: Persona | None = None) -> AIProvider:
+    """The persona's own model if it has one, otherwise whichever config is active.
+
+    Called once per speaker rather than once per round: a persona is free to run on
+    a different model from the other three, and a config edited mid-round takes
+    effect on the next one to speak.
+    """
+    config = None
+    if persona is not None and persona.ai_provider_config_id is not None:
+        config = db.get(AiProviderConfig, persona.ai_provider_config_id)
+        if config is None:
+            # SET NULL should have cleared this when the config was deleted. If it
+            # did not, name the persona — an anonymous failure here means checking
+            # four settings to find the broken one.
+            raise AIProviderError(
+                f"{persona.name} is set to an AI model that no longer exists",
+                safe_to_display=True,
+            )
+
+    if config is None:
+        config = db.scalars(
+            select(AiProviderConfig).where(AiProviderConfig.is_active.is_(True))
+        ).one_or_none()
     if config is None:
         raise AIProviderError("No active AI provider is configured", safe_to_display=True)
 
@@ -144,10 +164,11 @@ def get_provider(db: Session) -> AIProvider:
         )
 
     logger.info(
-        "Using AI provider config id=%s provider=%s model=%s",
+        "Using AI provider config id=%s provider=%s model=%s persona=%s",
         config.id,
         config.provider,
         config.model,
+        persona.role.value if persona is not None else "-",
     )
 
     return provider_class(

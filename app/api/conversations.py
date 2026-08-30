@@ -20,7 +20,6 @@ from app.schemas.events import MessageAdded, RoundError, RoundEvent, VerdictReac
 from app.schemas.message import MessageCreate, MessageRead
 from app.schemas.verdict import VerdictRead
 from app.services.ai.base import AIProviderError
-from app.services.ai.provider import get_provider
 from app.services.arbiter import run_verdict
 from app.services.discussion import cadence, run_round
 from app.services.documents import extract_text
@@ -158,15 +157,14 @@ def _sse(event: RoundEvent) -> str:
 
 async def _run(conversation_id: int, db: Session) -> AsyncIterator[str]:
     conversation = db.get(Conversation, conversation_id)
-    provider = get_provider(db)
     round_index = 0
 
-    async for event in run_round(db, conversation, provider):
+    async for event in run_round(db, conversation):
         round_index = getattr(event, "round_index", round_index)
         yield _sse(event)
 
     if round_index % cadence(conversation) == 0:
-        verdict, spoken = await run_verdict(db, conversation, provider, round_index)
+        verdict, spoken = await run_verdict(db, conversation, round_index)
         yield _sse(MessageAdded(message=MessageRead.model_validate(spoken)))
         yield _sse(VerdictReached(verdict=VerdictRead.model_validate(verdict)))
 

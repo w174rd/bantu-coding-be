@@ -65,6 +65,16 @@ Identity and display data live in the `personas` table, seeded by migration. **S
 `app/core/personas.py`, keyed by role, and are never returned by any endpoint.** Personas reply in whatever
 language the user writes in.
 
+**Each persona may run on its own model.** `personas.ai_provider_config_id` is a nullable FK to
+`ai_provider_configs`, settable through `PATCH /api/v1/personas/{id}` and **the only mutable field on a
+persona** — role, name, avatar and colour are seeded identity, not settings. Null means "use whichever config
+is `is_active`", which is what all four did before the column existed, so `is_active` remains the global
+fallback rather than being replaced.
+
+The FK is `ON DELETE SET NULL`, never CASCADE: deleting a model configuration drops the preference, not the
+character. `get_provider(db, persona=None)` is therefore called **once per speaker**, inside the round loop —
+resolving once per round would put every persona back on one model.
+
 **Flow:** a round runs `Architect → Researcher → Challenger` automatically; **the Arbiter steps in on its own
 after N rounds**, scores the options as percentages, and creates the winning ticket. That ticket lands in
 **Backlog** — which is why it does not violate the drag gate in point 3. Only the user moves anything into
@@ -130,14 +140,15 @@ See `.claude/specs/INDEX.md` for the executed specs. `origin` exists — section
 pushed to it, which is nothing without an instruction.
 
 **Exists:** `app/` (`api/`, `core/`, `db/`, `models/`, `schemas/`, `services/`), `tests/`, `alembic/` with
-five migrations, `requirements.txt`, `.venv/`. Twenty-six endpoints over fifteen paths: projects (CRUD plus
-nested `/tickets` and `/conversations`), tickets CRUD, `/api/v1/personas`, `/api/v1/conversations` with
+six migrations, `requirements.txt`, `.venv/`. Twenty-seven endpoints over fifteen paths: projects (CRUD plus
+nested `/tickets` and `/conversations`), tickets CRUD, `/api/v1/personas` (list plus `PATCH`),
+`/api/v1/conversations` with
 messages, document upload, verdicts and the SSE round stream, and `/api/v1/ai-provider-configs`.
 
 **Does not exist yet:** agent runs — nothing that executes a ticket, clones a target repo, or pushes. No auth.
 No FE chat UI (that repo's `routes/Chat.tsx` is still a placeholder), and no project picker there either.
 
-**The database is at `db5519dc8798`** and has been verified end to end (create a project, a ticket and a room
+**The database is at `a3f1c27b5e04`** and has been verified end to end (create a project, a ticket and a room
 through the API; cascade delete). It holds the four personas and one `ai_provider_configs` row; `tickets`,
 `conversations`, `messages` and `verdicts` were emptied by that migration and start again from zero. Run
 `alembic current` before believing this line.

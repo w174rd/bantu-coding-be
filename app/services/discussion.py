@@ -19,7 +19,7 @@ from app.schemas.events import (
     RoundStarted,
 )
 from app.schemas.message import MessageRead
-from app.services.ai.base import AIProvider
+from app.services.ai.provider import get_provider
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ def cadence(conversation: Conversation) -> int:
 
 
 async def run_round(
-    db: Session, conversation: Conversation, provider: AIProvider
+    db: Session, conversation: Conversation
 ) -> AsyncIterator[RoundEvent]:
     """Run one Architect → Researcher → Challenger round, emitting events as it goes.
 
@@ -125,6 +125,10 @@ async def run_round(
         provider_messages = build_provider_messages(
             window(history, get_settings().chat_history_char_budget), persona, personas
         )
+
+        # Resolved here rather than once for the round: each persona may be set
+        # to its own model, and one that is not falls back to the active config.
+        provider = get_provider(db, persona)
 
         started = time.monotonic()
         reply = await provider.chat(

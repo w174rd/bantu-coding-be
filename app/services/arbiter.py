@@ -15,7 +15,8 @@ from app.models.persona import Persona
 from app.models.ticket import Ticket
 from app.models.verdict import Verdict, VerdictOption
 from app.schemas.verdict import MAX_TICKETS_PER_VERDICT, ArbiterVerdict
-from app.services.ai.base import AIProvider, AIProviderError
+from app.services.ai.base import AIProviderError
+from app.services.ai.provider import get_provider
 from app.services.discussion import build_provider_messages, window
 
 logger = logging.getLogger(__name__)
@@ -159,7 +160,7 @@ def _record(
 
 
 async def run_verdict(
-    db: Session, conversation: Conversation, provider: AIProvider, round_index: int
+    db: Session, conversation: Conversation, round_index: int
 ) -> tuple[Verdict, Message]:
     personas = {persona.id: persona for persona in db.scalars(select(Persona))}
     arbiter = next(p for p in personas.values() if p.role is PersonaRole.ARBITER)
@@ -175,6 +176,7 @@ async def run_verdict(
         window(history, get_settings().chat_history_char_budget), arbiter, personas
     )
 
+    provider = get_provider(db, arbiter)
     reply = await provider.chat(
         provider_messages,
         system=(

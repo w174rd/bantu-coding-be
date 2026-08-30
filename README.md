@@ -77,6 +77,11 @@ is a native Postgres enum, so a fifth character would be a migration.
 | `CHALLENGER` | Challenger | 🧨 | `#f43f5e` | Antithesis — attacks the proposal |
 | `ARBITER` | Arbiter | ⚖️ | `#f59e0b` | Scores the options and writes the ticket(s) |
 
+Each persona may run on its own model: `personas.ai_provider_config_id` points at an
+`ai_provider_configs` row, or is null to follow whichever config is active. The provider is resolved once
+per speaker, so a single round can mix models. Deleting a configuration sets the column back to null rather
+than deleting the persona.
+
 Identity and display data live in the `personas` table (seeded by migration). System prompts live in
 `app/core/personas.py`, keyed by role, and are **never** returned by any endpoint. Personas reply in
 whatever language the user writes in.
@@ -205,12 +210,13 @@ unintended.
 ```powershell
 alembic upgrade head      # apply
 alembic current           # what the database is actually at
-alembic history           # the five migrations
+alembic history           # the six migrations
 alembic downgrade -1      # roll one back
 ```
 
 Migration chain: `ef720fa92c78` (tickets) → `f52211af4ab5` (discussion room) → `b7c4e0d51a93` (verdicts)
-→ `22b059f01724` (a verdict can produce many tickets) → `db5519dc8798` (projects).
+→ `22b059f01724` (a verdict can produce many tickets) → `db5519dc8798` (projects)
+→ `a3f1c27b5e04` (a model per persona).
 
 `db5519dc8798` **deletes every existing ticket, conversation, message and verdict** — they predate
 projects and have no project to belong to, and its `downgrade()` does not bring them back. `personas` and
@@ -295,6 +301,7 @@ so an omitted field is left alone while an explicit `null` clears it.
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/personas` | The four seeded characters (never their system prompts) |
+| `PATCH` | `/personas/{id}` | Point a persona at an `ai_provider_config`, or send `null` to follow the active one |
 
 ### Conversations
 
