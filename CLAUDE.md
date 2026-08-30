@@ -208,7 +208,7 @@ Auto-commit and auto-push to a target repo is **intended behavior**, executed by
 - **No premature abstraction** (e.g. a generic base service/repository for a single use case). Three similar lines beat a helper whose need is not yet clear.
 - **No defensive error handling** for scenarios that cannot happen. Trust the framework's guarantees (FastAPI dependency injection, Pydantic validation, SQLAlchemy session lifecycle).
 - **Do not write comments** unless there is a non-obvious *Why* (a hidden constraint, a bug workaround, a subtle invariant). Identifier names already explain the *What*.
-- **Do not create new documentation files** (`*.md`, `README`) unless the user explicitly asks.
+- **Do not create new documentation files** (`*.md`, `README`) unless the user explicitly asks. `README.md` already exists and **is** maintained — see section 11.
 - **No backwards-compatibility shims** for code just written. Delete the old thing instead.
 - **Do not build modules for hypothetical features.** This product has 5 flow stages (section 0) — build them one at a time as they are worked on, not all up front.
 
@@ -388,7 +388,7 @@ Full conventions are in `.claude/specs/README.md`. **Read that file** before wri
 3. Wait for user approval before executing.
 4. Once approved, `git mv` the file to `.claude/specs/in-progress/`, change `status: in-progress`, and fill in the progress checklist.
 5. Implementation done → report to the user, and **do not offer to commit** — wait until the user has finished testing and explicitly asks.
-6. When **the user asks to commit**: `git mv` the spec to `.claude/specs/plans-executed/`, change `status: done`, fill in "Results & Execution Notes", then add one line to **INDEX.md**. Only then run the code commit + the journal commit (two separate commits — see section 1a).
+6. When **the user asks to commit**: `git mv` the spec to `.claude/specs/plans-executed/`, change `status: done`, fill in "Results & Execution Notes", then add one line to **INDEX.md**, then **bring `README.md` back in line with what the work changed** (section 11). Only then run the code commit + the journal commit (two separate commits — see section 1a).
 
 **Exception — trivial tasks** (typos, simple renames, a string change, reformatting): just do them, no spec needed. Full definition in the specs README.
 
@@ -404,3 +404,46 @@ Full conventions are in `.claude/specs/README.md`. **Read that file** before wri
 - Before starting a new session: check `.claude/specs/in-progress/` first (see section 9).
 - Before switching device/session: commit all changes (pushing awaits remote instructions — see section 1a).
 - Companion repo: `bantu-coding-fe` (frontend, separate repo). If a backend change alters the API contract, record it in the spec so the FE session can follow.
+
+---
+
+## 11. README.md — Keep It Current
+
+`README.md` at the repo root is this project's outward-facing document: specification, tech stack, setup,
+configuration reference, run/test commands, the API tables, the security summary, and the current status.
+`CLAUDE.md` is the rulebook for working *inside* the repo; `README.md` describes the repo to a person
+arriving at it. Keep the two in their own lanes — do not copy this file's behavioral rules into the README,
+and do not turn the README into a second CLAUDE.md.
+
+**Update it in the same change that makes it wrong.** A stale README is worse than no README: someone will
+follow it. Treat the update as part of the deliverable, not a follow-up task — the check happens at
+section 9 step 6, alongside the INDEX.md line, before anything is committed.
+
+**Triggers — if the work touched any of these, the README needs a look:**
+
+| Change | README section to fix |
+|---|---|
+| Endpoint added, removed, renamed, or its method/path changed | §5 API tables |
+| A new SSE event type, or a changed payload | §5 SSE event table |
+| New/renamed/removed field in `Settings` or `.env.example` | §3 configuration reference |
+| New dependency, or one whose role changes the stack | §2 tech stack |
+| A new Alembic migration | §3 migration chain, §9 head revision |
+| A change to `TicketStatus`, `PersonaRole`, `MessageAuthorKind`, or the persona cast | §1 spec |
+| A new provider adapter | §1 supported `provider` values, §2 stack |
+| Setup or run commands change (interpreter, port, venv, test invocation) | §3, §4 |
+| A spec is archived, or a stage of the product flow becomes built | §1 flow table, §9 status |
+| An item under "Decisions NOT yet made" gets settled | §9 *Not decided yet*, and section 0 of this file |
+| Section 6 of this file changes (needs its own spec — §6.5) | §7 security summary |
+
+**How to update it:**
+
+- **Verify, do not paraphrase.** Read the code the section describes — the API tables came from the routers,
+  the env table from `app/core/config.py`, the migration chain from `alembic history`. Section 2
+  (anti-hallucination) applies to the README exactly as it applies to code.
+- **Edit the affected rows**, do not rewrite the file. A one-endpoint change is a one-row diff.
+- **Section 7 applies in full.** No real database names, roles, hostnames, API keys, or repo identifiers —
+  the README is committed like anything else. Placeholders only.
+- **Do not document what does not exist yet.** Agent runs, auth, and the deployment target stay in the
+  "Not built" / "Not decided yet" lists until they are real.
+- Fixing only the README (a stale table, a wrong command) is a **trivial** task under section 4 — just do
+  it, no spec.
