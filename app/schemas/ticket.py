@@ -6,6 +6,7 @@ from app.core.enums import TicketStatus
 
 
 class TicketCreate(BaseModel):
+    project_id: int
     title: str = Field(min_length=1, max_length=200)
     body: str | None = None
 
@@ -20,6 +21,7 @@ class TicketRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    project_id: int
     title: str
     body: str | None
     status: TicketStatus

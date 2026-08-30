@@ -121,6 +121,9 @@ def _record(
     for proposed in verdict.tickets:
         db.add(
             Ticket(
+                # From the conversation's record, never from the verdict: section 6.4
+                # keeps the choice of what a ticket belongs to out of model output.
+                project_id=conversation.project_id,
                 title=proposed.title,
                 body=proposed.body,
                 # Never read from the model. The drag gate (CLAUDE.md section 0, point 3)

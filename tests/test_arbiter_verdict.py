@@ -2,10 +2,13 @@ import json
 
 import pytest
 
-from app.core.enums import TicketStatus
+from app.core.enums import PersonaRole, TicketStatus
+from app.models.conversation import Conversation
+from app.models.persona import Persona
+from app.models.ticket import Ticket
 from app.schemas.verdict import MAX_TICKETS_PER_VERDICT
 from app.services.ai.base import AIProviderError
-from app.services.arbiter import parse_verdict
+from app.services.arbiter import _record, parse_verdict
 
 VALID = {
     "headline": "Go with the queue.",
@@ -150,3 +153,60 @@ def test_exactly_the_cap_is_accepted():
     }
 
     assert len(parse_verdict(json.dumps(payload)).tickets) == MAX_TICKETS_PER_VERDICT
+
+
+class _FakeSession:
+    """Just enough Session for _record: it writes rows and never reads any back."""
+
+    def __init__(self):
+        self.added = []
+
+    def add(self, obj):
+        self.added.append(obj)
+
+    def flush(self):
+        pass
+
+    def commit(self):
+        pass
+
+    def refresh(self, obj):
+        pass
+
+
+def _record_verdict(project_id, payload):
+    db = _FakeSession()
+    conversation = Conversation(id=1, project_id=project_id)
+    arbiter = Persona(id=4, role=PersonaRole.ARBITER)
+
+    _record(db, conversation, arbiter, 2, parse_verdict(json.dumps(payload)))
+
+    return [obj for obj in db.added if isinstance(obj, Ticket)]
+
+
+def test_written_tickets_inherit_the_conversation_project():
+    # From the conversation's record, never from the verdict: the Arbiter has no
+    # channel through which to aim a ticket at a project of its choosing.
+    tickets = _record_verdict(7, VALID)
+
+    assert [t.project_id for t in tickets] == [7]
+
+
+def test_a_project_id_in_the_model_output_is_ignored():
+    payload = {**VALID, "tickets": [{**VALID["tickets"][0], "project_id": 999}]}
+
+    tickets = _record_verdict(7, payload)
+
+    assert [t.project_id for t in tickets] == [7]
+
+
+def test_every_ticket_of_a_split_verdict_lands_in_backlog_under_one_project():
+    payload = {
+        **VALID,
+        "tickets": [{"title": f"Step {n}", "body": "## Goal\nx"} for n in (1, 2, 3)],
+    }
+
+    tickets = _record_verdict(7, payload)
+
+    assert [t.project_id for t in tickets] == [7, 7, 7]
+    assert {t.status for t in tickets} == {TicketStatus.BACKLOG}

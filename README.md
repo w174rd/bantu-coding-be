@@ -14,6 +14,7 @@ The frontend lives in a separate repo, `bantu-coding-fe`.
 
 | # | Stage | State |
 |---|---|---|
+| 0 | **Create a project** — the user names a project; nothing else exists outside one | Built |
 | 1 | **Multi-persona chat** — the user and four AI personas talk in one shared room | Built |
 | 2 | **Backlog tickets** — the Arbiter turns the discussion into one or more tickets | Built |
 | 3 | **Drag to In Progress** — only the user may move a ticket *into* In Progress | Board API built |
@@ -28,11 +29,31 @@ user's behalf.
 
 | Term | Meaning |
 |---|---|
+| **Project** | The container everything belongs to, and where the target repo is recorded. |
 | **Persona** | One AI personality the user can talk to. |
 | **Conversation** / **Message** | A chat thread and its entries. |
 | **Ticket** | A backlog item created out of a conversation. The unit of work. |
 | **Agent run** | One Claude Agent SDK execution against a ticket. *(not implemented yet)* |
 | **Target repo** | The external GitHub repo an agent run reads and pushes to — never this repo. |
+
+### Projects
+
+A project is created before anything else: it is what the user names first, and every conversation and
+every ticket carries a **non-null** `project_id`. That is enforced by the database, not by convention, and
+deleting a project cascades to its rooms and its board.
+
+| Column | Notes |
+|---|---|
+| `name` | Required, **unique** — two identically named projects are indistinguishable on a board. Creating a duplicate returns `409`. |
+| `description` | Optional. |
+| `repo_url` | The target repo. Optional at creation; validated as an **`https://` URL**. |
+| `default_branch` | The **PR base**, never a push target — a run pushes to its own branch (§7, control 3). |
+
+`repo_url` being pinned to `https` at the schema is not cosmetic: security §6.4 requires a run's target to
+come from a typed column, and a column that also accepts `file://` or `ssh://` is not that guarantee.
+
+There is no GitHub credential column yet. Where the agent runner's per-repo credential lives is decided
+with the code that uses it — see *Not decided yet*.
 
 ### The board
 
@@ -184,12 +205,16 @@ unintended.
 ```powershell
 alembic upgrade head      # apply
 alembic current           # what the database is actually at
-alembic history           # the four migrations
+alembic history           # the five migrations
 alembic downgrade -1      # roll one back
 ```
 
 Migration chain: `ef720fa92c78` (tickets) → `f52211af4ab5` (discussion room) → `b7c4e0d51a93` (verdicts)
-→ `22b059f01724` (a verdict can produce many tickets).
+→ `22b059f01724` (a verdict can produce many tickets) → `db5519dc8798` (projects).
+
+`db5519dc8798` **deletes every existing ticket, conversation, message and verdict** — they predate
+projects and have no project to belong to, and its `downgrade()` does not bring them back. `personas` and
+`ai_provider_configs` are untouched.
 
 ### Configure an AI provider
 
@@ -243,12 +268,24 @@ Base URL `/api/v1`. No response envelope: endpoints return the resource itself a
 for the outcome (`201` create, `204` delete, `404` missing, `422` validation). `PATCH` uses `exclude_unset`,
 so an omitted field is left alone while an explicit `null` clears it.
 
+### Projects
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/projects` | List projects |
+| `POST` | `/projects` | Create one; a duplicate name returns `409` |
+| `GET` | `/projects/{id}` | One project |
+| `PATCH` | `/projects/{id}` | Partial update |
+| `DELETE` | `/projects/{id}` | Delete it, its rooms and its board — cascading, immediate |
+| `GET` | `/projects/{id}/tickets` | That project's board |
+| `GET` | `/projects/{id}/conversations` | That project's rooms |
+
 ### Tickets
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/tickets` | List all tickets |
-| `POST` | `/tickets` | Create a ticket |
+| `GET` | `/tickets` | List all tickets, across every project |
+| `POST` | `/tickets` | Create a ticket; `project_id` is required, `404` if unknown |
 | `GET` | `/tickets/{id}` | One ticket |
 | `PATCH` | `/tickets/{id}` | Partial update (title, body, status) |
 | `DELETE` | `/tickets/{id}` | Delete |
@@ -263,8 +300,8 @@ so an omitted field is left alone while an explicit `null` clears it.
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/conversations` | List conversations |
-| `POST` | `/conversations` | Create one |
+| `GET` | `/conversations` | List conversations, across every project |
+| `POST` | `/conversations` | Create one; `project_id` is required, `404` if unknown |
 | `GET` | `/conversations/{id}` | One conversation |
 | `DELETE` | `/conversations/{id}` | Delete it and its messages |
 | `GET` | `/conversations/{id}/messages` | Room history, ordered by id |
@@ -374,9 +411,10 @@ push this repo.
 
 ## 9. Status
 
-**Built:** the ticket board API, the four-persona discussion room, document ingest, the SSE round stream,
-the Arbiter's scored verdict writing tickets, and runtime-switchable AI providers. The local database is
-migrated to head (`22b059f01724`).
+**Built:** projects, the ticket board API, the four-persona discussion room, document ingest, the SSE round
+stream, the Arbiter's scored verdict writing tickets, and runtime-switchable AI providers. The local
+database is migrated to head (`db5519dc8798`) and is empty of tickets and conversations — that migration
+cleared the pre-project rows.
 
 **Not built:** agent runs — nothing yet executes a ticket, clones a target repo, or pushes. No
 authentication. The frontend chat UI is still a placeholder in `bantu-coding-fe`.
@@ -389,6 +427,8 @@ needs its isolation decision settled first.
 - **How** agent runs are isolated (Docker, a VM, or a dedicated unprivileged user). *That* they are
   isolated is settled and required.
 - Authentication. Single-user on localhost is the current assumption.
-- How target repos get registered and cloned. The credential *shape* is settled (per-repo scoped, separate
-  from the app's); where the record lives is not.
+- The agent runner's GitHub credential, and how a target repo is cloned. **Where the repo record lives is
+  now settled** — `projects.repo_url` and `projects.default_branch`. What is still open is the credential:
+  its *shape* is fixed (per-repo scoped, separate from the app's), but whether it is a PAT per project, one
+  shared, or a GitHub App installation is decided with the code that uses it.
 - The production deployment target.

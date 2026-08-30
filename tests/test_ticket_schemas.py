@@ -16,11 +16,17 @@ def test_board_columns_are_exactly_these_four_in_order():
 
 def test_create_requires_a_non_empty_title():
     with pytest.raises(ValidationError):
-        TicketCreate(title="")
+        TicketCreate(project_id=1, title="")
 
 
 def test_create_defaults_body_to_none():
-    assert TicketCreate(title="Add a login form").body is None
+    assert TicketCreate(project_id=1, title="Add a login form").body is None
+
+
+def test_update_cannot_move_a_ticket_between_projects():
+    # Reassigning a ticket is a different feature; PATCH silently ignoring the field
+    # would look like it worked.
+    assert "project_id" not in TicketUpdate.model_fields
 
 
 def test_update_distinguishes_omitted_from_explicit_null():

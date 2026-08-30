@@ -8,6 +8,7 @@ from app.core.enums import TicketStatus
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.project import Project
     from app.models.verdict import Verdict
 
 
@@ -15,6 +16,11 @@ class Ticket(Base):
     __tablename__ = "tickets"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # Every ticket belongs to a project. CASCADE because a project is the container:
+    # deleting it and leaving its board behind would orphan rows under a NOT NULL column.
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
     title: Mapped[str] = mapped_column(String(200))
     body: Mapped[str | None] = mapped_column(Text, default=None)
     status: Mapped[TicketStatus] = mapped_column(
@@ -40,4 +46,5 @@ class Ticket(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+    project: Mapped["Project"] = relationship(back_populates="tickets")
     verdict: Mapped["Verdict | None"] = relationship(back_populates="tickets")

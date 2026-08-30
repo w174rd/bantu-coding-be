@@ -12,6 +12,7 @@ No architecture spec exists yet — the first one gets written when the `app/` s
 
 `bantu-coding-be` is the backend for a collaborative coding-assistant app. The product flow:
 
+0. **A project** — the user names one first. Every conversation and every ticket belongs to exactly one, and a project is where the target repo is recorded (`repo_url`, `default_branch`).
 1. **Multi-persona chat** — the user talks with several AI personas that have distinct personalities. Slack-style UI/UX, built in the separate `bantu-coding-fe` repo.
 2. **Backlog tickets** — out of those discussions, the AI can create backlog tickets.
 3. **Drag to In Progress** — the user drags a ticket into the "In Progress" column. **Only the user may move a ticket *into* In Progress** — never the AI, never an automatic rule. This is the product's primary control gate: it is the only thing standing between an AI-written ticket and an AI-executed code change on a real repo. Treat it as an invariant.
@@ -25,6 +26,7 @@ These names are shared with `bantu-coding-fe`. Use them in models, schemas, rout
 
 | Term | Meaning |
 |---|---|
+| **Project** | The container everything belongs to, and where the target repo is recorded. Created before anything else; conversations and tickets carry a NOT NULL `project_id`. |
 | **Persona** | One AI personality the user can talk to. |
 | **Conversation** / **Message** | A chat thread and its entries. |
 | **Ticket** | A backlog item created out of a conversation. The unit of work. |
@@ -122,30 +124,32 @@ the filename kept for display only. Their content is untrusted input under secti
 
 Default model: `claude-opus-5`, unless the user asks for another.
 
-### Current status: TICKETS AND THE DISCUSSION ROOM ARE BUILT, THE DATABASE IS NOT MIGRATED
+### Current status: PROJECTS, TICKETS AND THE DISCUSSION ROOM ARE BUILT AND MIGRATED
 
-Four specs are executed (see `.claude/specs/INDEX.md`). `git remote -v` is still empty.
+See `.claude/specs/INDEX.md` for the executed specs. `origin` exists — section 1a still governs what may be
+pushed to it, which is nothing without an instruction.
 
-**Exists:** `app/` (`api/`, `core/`, `db/`, `models/`, `schemas/`, `services/`), `tests/`, `alembic/` with three
-migrations, `requirements.txt`, `.venv/`. Eighteen endpoints: tickets CRUD, `/api/v1/personas`,
-`/api/v1/conversations` with messages, document upload, verdicts and the SSE round stream, and
-`/api/v1/ai-provider-configs`.
+**Exists:** `app/` (`api/`, `core/`, `db/`, `models/`, `schemas/`, `services/`), `tests/`, `alembic/` with
+five migrations, `requirements.txt`, `.venv/`. Twenty-six endpoints over fifteen paths: projects (CRUD plus
+nested `/tickets` and `/conversations`), tickets CRUD, `/api/v1/personas`, `/api/v1/conversations` with
+messages, document upload, verdicts and the SSE round stream, and `/api/v1/ai-provider-configs`.
 
 **Does not exist yet:** agent runs — nothing that executes a ticket, clones a target repo, or pushes. No auth.
-No FE chat UI (that repo's `routes/Chat.tsx` is still a placeholder).
+No FE chat UI (that repo's `routes/Chat.tsx` is still a placeholder), and no project picker there either.
 
-**The database is the thing to check first.** `f52211af4ab5` and `b7c4e0d51a93` are hand-written and have
-**never been applied**, because `DB_USER`, `DB_PASSWORD` and `DB_NAME` are blank in the local `.env`. Until
-they are filled and `alembic upgrade head` succeeds, every endpoint except the tickets ones returns a `500`,
-and the persona/conversation/verdict schema is unproven. Run `alembic current` before believing anything here.
+**The database is at `db5519dc8798`** and has been verified end to end (create a project, a ticket and a room
+through the API; cascade delete). It holds the four personas and one `ai_provider_configs` row; `tickets`,
+`conversations`, `messages` and `verdicts` were emptied by that migration and start again from zero. Run
+`alembic current` before believing this line.
 
 Do not assume beyond this. Check first (`ls`, Grep) before editing or referencing a file — this block goes
 stale faster than anything else in this document.
 
 ### Next milestone
 
-Restore the `DB_*` credentials, apply both migrations, and verify a real discussion round end to end. The FE
-chat UI follows. Agent execution comes after that, and needs its isolation decision settled first (section 6.3).
+Verify a real discussion round end to end against a live provider. The FE follows and needs a project picker
+before its chat UI. Agent execution comes after that, and needs its isolation decision settled first
+(section 6.3).
 
 There is **no `/health` endpoint** and none is wanted — it was proposed in the scaffolding spec and rejected as
 ceremony. Do not add one back.
@@ -158,7 +162,7 @@ Do not invent answers for any of the following — if a task touches one, **ask 
 
 - Execution isolation — **that** runs are isolated is settled and required (section 6.3). **How** is open: Docker, a VM, or a dedicated unprivileged user. Pick the mechanism, not whether.
 - Auth — none yet. Single-user is the current assumption, and the app stays bound to localhost until that changes (section 6.3, item 6).
-- How target repos get registered and cloned. The credential *shape* is settled (per-repo scoped, separate from the app's — section 6.3, item 2); where the record lives is not.
+- The agent runner's GitHub credential, and how a target repo is cloned. **Where the repo record lives is settled** (`projects.repo_url`, `projects.default_branch` — spec `2026-08-30-projects-scope-chats-and-tickets`). The credential is not: its shape is fixed (per-repo scoped, separate from the app's — section 6.3, item 2), but a PAT per project vs. one shared vs. a GitHub App installation is decided with the code that uses it. There is deliberately **no credential column yet** — a live `contents:write` token in a table nothing reads is exposure without benefit while the app has no auth.
 
 ---
 
@@ -168,7 +172,7 @@ This project has an auto-commit & auto-push feature. That is a **product feature
 
 ### 1a. THIS repo (`bantu-coding-be`) — Claude as a developer
 
-The safe defaults below apply. The GitHub remote is **not set up yet** and the branch/PR strategy **will be decided by the user later** — do not guess a remote URL or a branching strategy.
+The safe defaults below apply. An `origin` remote now exists, but **nothing has been pushed to it by Claude** and the branch/PR strategy **is still the user's to decide** — commits so far go straight to `master`. Do not invent a branching or PR workflow, and do not push.
 
 - **Push nothing** without an explicit instruction from the user at that moment.
 - **Do not change remote configuration** (`git remote add/remove/set-url`) without an explicit instruction.

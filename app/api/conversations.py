@@ -13,6 +13,7 @@ from app.core.enums import MessageAuthorKind
 from app.db.session import SessionLocal, get_db
 from app.models.conversation import Conversation
 from app.models.message import Message
+from app.models.project import Project
 from app.models.verdict import Verdict
 from app.schemas.conversation import ConversationCreate, ConversationRead
 from app.schemas.events import MessageAdded, RoundError, RoundEvent, VerdictReached
@@ -52,6 +53,8 @@ def list_conversations(db: Session = Depends(get_db)) -> list[Conversation]:
 def create_conversation(
     payload: ConversationCreate, db: Session = Depends(get_db)
 ) -> Conversation:
+    if db.get(Project, payload.project_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     conversation = Conversation(**payload.model_dump())
     db.add(conversation)
     db.commit()

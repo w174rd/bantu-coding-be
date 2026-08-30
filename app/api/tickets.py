@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.models.project import Project
 from app.models.ticket import Ticket
 from app.schemas.ticket import TicketCreate, TicketRead, TicketUpdate
 
@@ -16,6 +17,11 @@ def _get_or_404(ticket_id: int, db: Session) -> Ticket:
     return ticket
 
 
+def _require_project(project_id: int, db: Session) -> None:
+    if db.get(Project, project_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+
 @router.get("", response_model=list[TicketRead])
 def list_tickets(db: Session = Depends(get_db)) -> list[Ticket]:
     return list(db.scalars(select(Ticket).order_by(Ticket.id)))
@@ -23,6 +29,7 @@ def list_tickets(db: Session = Depends(get_db)) -> list[Ticket]:
 
 @router.post("", response_model=TicketRead, status_code=status.HTTP_201_CREATED)
 def create_ticket(payload: TicketCreate, db: Session = Depends(get_db)) -> Ticket:
+    _require_project(payload.project_id, db)
     ticket = Ticket(**payload.model_dump())
     db.add(ticket)
     db.commit()
